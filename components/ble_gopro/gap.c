@@ -22,6 +22,17 @@ static inline char *ble_addr_to_str(const ble_addr_t *addr, char *str)
 }
 #endif
 
+void print_conn_desc(const struct ble_gap_conn_desc *desc)
+{
+    MODLOG_DFLT(INFO, "conn_itvl=%d conn_latency=%d supervision_timeout=%d "
+                      "encrypted=%d authenticated=%d bonded=%d",
+                desc->conn_itvl, desc->conn_latency,
+                desc->supervision_timeout,
+                desc->sec_state.encrypted,
+                desc->sec_state.authenticated,
+                desc->sec_state.bonded);
+}
+
 /**
  * Connects to the advertiser if it appears to be a GoPro.
  */
@@ -115,66 +126,9 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
         {
             ESP_LOGI(TAG, "GoPro Discovered: %s (RSSI: %d dBm)",
                      ble_addr_to_str(&disc->addr, addr_str_buf), disc->rssi);
+
             ble_connect(disc);
         }
-        return 0;
-    }
-
-    case BLE_GAP_EVENT_EXT_DISC:
-    {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_EXT_DISC");
-        // Process extended discovery if needed.
-        return 0;
-    }
-
-    // Adjust the event type macro as necessary.
-    case BLE_GAP_EVENT_PERIODIC_REPORT:
-    {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_PERIODIC_ADV_REPORT");
-        return 0;
-    }
-
-    case BLE_GAP_EVENT_LINK_ESTAB:
-    {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_LINK_ESTAB");
-
-        if (event->connect.status == 0)
-        {
-            MODLOG_DFLT(INFO, "Connection established ");
-            rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
-            assert(rc == 0);
-            if (rc == BLE_HS_EALREADY)
-            {
-                MODLOG_DFLT(ERROR, "Failed to add peer; peer has already been added!");
-            }
-            else if (rc != 0)
-            {
-                MODLOG_DFLT(ERROR, "Failed to add peer; rc=%d\n", rc);
-                return 0;
-            }
-            rc = ble_gap_security_initiate(event->connect.conn_handle);
-            if (rc != 0)
-            {
-                MODLOG_DFLT(INFO, "Security could not be initiated, rc = %d\n", rc);
-                return ble_gap_terminate(event->connect.conn_handle,
-                                         BLE_ERR_REM_USER_CONN_TERM);
-            }
-            else
-            {
-                MODLOG_DFLT(INFO, "Connection secured\n");
-            }
-        }
-        else
-        {
-            MODLOG_DFLT(ERROR, "Error: Connection failed; status=%d\n", event->connect.status);
-        }
-        return 0;
-    }
-
-    case BLE_GAP_EVENT_DISCONNECT:
-    {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_DISCONNECT");
-        MODLOG_DFLT(INFO, "disconnect; reason=%d ", event->disconnect.reason);
         return 0;
     }
 
@@ -185,43 +139,64 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
     }
 
+    case BLE_GAP_EVENT_LINK_ESTAB:
+    {
+        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_LINK_ESTAB");
+
+        print_conn_desc(&desc);
+        return 0;
+    }
+
     case BLE_GAP_EVENT_ENC_CHANGE:
     {
         ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_ENC_CHANGE");
+        print_conn_desc(&desc);
         MODLOG_DFLT(INFO, "encryption change event; status=%d ", event->enc_change.status);
-        rc = ble_gap_conn_find(event->enc_change.conn_handle, &desc);
-        assert(rc == 0);
         return 0;
     }
 
-    case BLE_GAP_EVENT_NOTIFY_RX:
+    case BLE_GAP_EVENT_CONNECT:
     {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_NOTIFY_RX");
-        MODLOG_DFLT(INFO, "received %s; conn_handle=%d attr_handle=%d attr_len=%d\n",
-                    event->notify_rx.indication ? "indication" : "notification",
-                    event->notify_rx.conn_handle,
-                    event->notify_rx.attr_handle,
-                    OS_MBUF_PKTLEN(event->notify_rx.om));
+        ESP_LOGI(TAG, "BLE_GAP_EVENT_CONNECT");
+        print_conn_desc(&desc);
+        if (event->connect.status == 0)
+        {
+            MODLOG_DFLT(INFO, "Connection established ");
+            rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
+
+            if (rc == 0)
+            {
+                MODLOG_DFLT(INFO, "Initiating Security");
+                rc = ble_gap_security_initiate(event->connect.conn_handle);
+                if (rc != 0)
+                {
+                    MODLOG_DFLT(INFO, "Security could not be initiated, rc = %d\n", rc);
+                    return ble_gap_terminate(event->connect.conn_handle,
+                                             BLE_ERR_REM_USER_CONN_TERM);
+                }
+                else
+                {
+                    MODLOG_DFLT(INFO, "Connection secured\n");
+                    print_conn_desc(&desc);
+                }
+            }
+            else
+            {
+                MODLOG_DFLT(ERROR, "Error: Could not find connection handle!");
+            }
+        }
+        else
+        {
+            MODLOG_DFLT(ERROR, "Error: Connection failed; status=%d\n", event->connect.status);
+        }
         return 0;
     }
 
-    case BLE_GAP_EVENT_MTU:
+    case BLE_GAP_EVENT_PARING_COMPLETE:
     {
-        ESP_LOGI(TAG, "GAP EVENT: BLE_GAP_EVENT_MTU");
-        MODLOG_DFLT(INFO, "mtu update event; conn_handle=%d cid=%d mtu=%d\n",
-                    event->mtu.conn_handle,
-                    event->mtu.channel_id,
-                    event->mtu.value);
+        ESP_LOGI(TAG, "BLE_GAP_EVENT_PARING_COMPLETE");
+        print_conn_desc(&desc);
         return 0;
-    }
-
-    case BLE_GAP_EVENT_REPEAT_PAIRING:
-    {
-        ESP_LOGI(TAG, "GAP: BLE_GAP_EVENT_REPEAT_PAIRING");
-        rc = ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
-        assert(rc == 0);
-        ble_store_util_delete_peer(&desc.peer_id_addr);
-        return BLE_GAP_REPEAT_PAIRING_RETRY;
     }
 
     case BLE_GAP_EVENT_REATTEMPT_COUNT:
@@ -230,45 +205,6 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
     }
 
-    case BLE_GAP_EVENT_CONNECT:
-    {
-        ESP_LOGI(TAG, "BLE_GAP_EVENT_CONNECT");
-
-        // if (event->connect.status == 0)
-        // {
-        //     MODLOG_DFLT(INFO, "Connection established ");
-        //     rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
-        //     assert(rc == 0);
-        //     rc = ble_gap_security_initiate(event->connect.conn_handle);
-        //     if (rc != 0)
-        //     {
-        //         MODLOG_DFLT(INFO, "Security could not be initiated, rc = %d\n", rc);
-        //         return ble_gap_terminate(event->connect.conn_handle,
-        //                                  BLE_ERR_REM_USER_CONN_TERM);
-        //     }
-        //     else
-        //     {
-        //         MODLOG_DFLT(INFO, "Connection secured\n");
-        //     }
-        // }
-        // else
-        // {
-        //     MODLOG_DFLT(ERROR, "Error: Connection failed; status=%d\n", event->connect.status);
-        // }
-        return 0;
-    }
-
-    case BLE_GAP_EVENT_DATA_LEN_CHG:
-    {
-        ESP_LOGI(TAG, "BLE_GAP_EVENT_DATA_LEN_CHG received");
-        return 0;
-    }
-
-    case BLE_GAP_EVENT_PARING_COMPLETE:
-    {
-        ESP_LOGI(TAG, "BLE_GAP_EVENT_PARING_COMPLETE");
-        return 0;
-    }
     default:
         ESP_LOGI(TAG, "GAP: Unhandled GAP event received! Event Type: %d", event->type);
         return 0;

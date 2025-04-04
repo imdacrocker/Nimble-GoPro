@@ -60,6 +60,7 @@ void ble_gopro_scan(void)
         MODLOG_DFLT(ERROR, "error determining address type; rc=%d\n", rc);
         return;
     }
+
     disc_params.filter_duplicates = 1;
     disc_params.passive = 1;
     disc_params.itvl = 0x0010;
