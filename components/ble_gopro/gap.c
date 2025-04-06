@@ -205,6 +205,12 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
         return 0;
     }
 
+    case BLE_GAP_EVENT_DISCONNECT:
+    {
+        ESP_LOGI(TAG, "BLE_GAP_EVENT_DISCONNECT");
+        return 0;
+    }
+
     default:
         ESP_LOGI(TAG, "GAP: Unhandled GAP event received! Event Type: %d", event->type);
         return 0;
