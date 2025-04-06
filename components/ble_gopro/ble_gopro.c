@@ -11,11 +11,6 @@ static const char *TAG = "BLE_GOPRO";
 
 void ble_store_config_init(void);
 
-// Global storage for discovered devices.
-char discoveredDevices[MAX_DEVICES][32];
-ble_addr_t discoveredDevicesAddr[MAX_DEVICES];
-int numDevices = 0;
-
 /*
  * Reset callback for the BLE host.
  */
@@ -91,9 +86,9 @@ void ble_gopro_init(void)
     ble_hs_cfg.sync_cb = ble_on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr; // This needs to be replaced, it just removes old entries
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
-    ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_mitm = 0;
-    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_bonding = 1; // Enable bonding
+    ble_hs_cfg.sm_mitm = 0; // No Man in the Middle protection
+    ble_hs_cfg.sm_sc = 1; // Enable secure connections
     ble_hs_cfg.sm_our_key_dist   = BLE_SM_PAIR_KEY_DIST_ENC; // Set Local Keys Distribution to LTK
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC; // Set Remote Keys Distribution to LTK
 
