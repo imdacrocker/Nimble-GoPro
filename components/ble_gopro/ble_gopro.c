@@ -6,6 +6,7 @@
 #include "host/ble_uuid.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "esp_nimble_hci.h"
 
 static const char *TAG = "BLE_GOPRO";
 
@@ -95,6 +96,14 @@ void ble_gopro_init(void)
     ESP_LOGI(TAG, "Initializing BLE storage...");
     ble_store_config_init();
 
+    ESP_LOGI(TAG, "Initializing HCI and controller...");
+    ESP_ERROR_CHECK(esp_nimble_hci_init());
+
     ESP_LOGI(TAG, "Initializing NimBLE port...");
     nimble_port_freertos_init(ble_host_task);
+
+    uint8_t size;
+    ble_gap_wl_read_size(&size);
+
+    ESP_LOGI(TAG, "Whitelist size: %d", size);
 }
