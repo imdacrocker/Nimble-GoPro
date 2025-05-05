@@ -10,18 +10,21 @@ void app_main(void)
 {
     /* NVS flash initialization */
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
     {
         ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+        ret = nvs_flash_init(); // Retry initialization
     }
     if (ret != ESP_OK)
     {
-        ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
+        ESP_LOGE(TAG, "Failed to initialize NVS flash, error code: %d", ret);
         return;
     }
-    
+    else
+    {
+        ESP_LOGI(TAG, "NVS flash initialized successfully");
+    }
+
     ble_gopro_init();
 
     ble_gopro_scan();

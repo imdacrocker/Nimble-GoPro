@@ -47,6 +47,7 @@ void ble_host_task(void *param)
 void ble_gopro_scan(void)
 {
     ESP_LOGI(TAG, "Initializing scanning...");
+
     uint8_t own_addr_type;
     struct ble_gap_disc_params disc_params;
     int rc;
@@ -57,11 +58,46 @@ void ble_gopro_scan(void)
         return;
     }
 
+    ble_addr_t camera_address; // Variable to store the loaded camera address
+    bool cameraFound = false;
+
+    // Call the function to load the camera address from NVS
+    esp_err_t err = load_camera_info_from_nvs(&camera_address);
+
+    camera_address.type = BLE_ADDR_PUBLIC;
+    if (err == ESP_OK)
+    {
+        // Successfully loaded the camera address
+        char addr_str[18];
+        ble_addr_to_str(&camera_address, addr_str);
+        ESP_LOGI(TAG, "Camera loaded! addr:%s type:%d",addr_str, camera_address.type);
+        cameraFound = true;
+        reverse_addr(&camera_address);
+
+        ble_addr_t wl_addrs[1] = {camera_address};
+        int rc = ble_gap_wl_set(wl_addrs, 1);
+        if (rc != ESP_OK)
+        {
+            ESP_LOGE(TAG,"Error setting whitelist! error=%d",rc);
+        }
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to retrieve camera address from NVS");
+    }
+
     disc_params.filter_duplicates = 1;
     disc_params.passive = 1;
     disc_params.itvl = 0x0010;
     disc_params.window = 0x0010;
+    if (cameraFound)
+    {
+        disc_params.filter_policy = 0;
+    }
+    else
+    {
     disc_params.filter_policy = 0;
+    }
     disc_params.limited = 0;
 
     rc = ble_gap_disc(own_addr_type, 30 * 1000, &disc_params,
@@ -76,6 +112,11 @@ void ble_gopro_scan(void)
  */
 void ble_gopro_init(void)
 {
+    ;
+    ESP_LOGI(TAG, "Initializing BLE storage...");
+    ble_store_config_init();
+
+
     ESP_LOGI(TAG, "Initializing BLE...");
     esp_err_t ret = nimble_port_init();
     if (ret != ESP_OK) {
@@ -90,20 +131,20 @@ void ble_gopro_init(void)
     ble_hs_cfg.sm_bonding = 1; // Enable bonding
     ble_hs_cfg.sm_mitm = 0; // No Man in the Middle protection
     ble_hs_cfg.sm_sc = 1; // Enable secure connections
-    ble_hs_cfg.sm_our_key_dist   = BLE_SM_PAIR_KEY_DIST_ENC; // Set Local Keys Distribution to LTK
-    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC; // Set Remote Keys Distribution to LTK
-
-    ESP_LOGI(TAG, "Initializing BLE storage...");
-    ble_store_config_init();
-
-    ESP_LOGI(TAG, "Initializing HCI and controller...");
-    ESP_ERROR_CHECK(esp_nimble_hci_init());
+    ble_hs_cfg.sm_our_key_dist   = BLE_SM_PAIR_KEY_DIST_ENC   // share our LTK
+                            | BLE_SM_PAIR_KEY_DIST_ID;   // share our IRK
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC   // request peer’s LTK
+                            | BLE_SM_PAIR_KEY_DIST_ID;   // request peer’s IRK
 
     ESP_LOGI(TAG, "Initializing NimBLE port...");
     nimble_port_freertos_init(ble_host_task);
 
-    uint8_t size;
-    ble_gap_wl_read_size(&size);
+    // ESP_LOGI(TAG,"Clearing whitelist...");
+    // ble_gap_wl_tx_clear();
 
-    ESP_LOGI(TAG, "Whitelist size: %d", size);
+    // uint8_t size;
+    // ble_gap_wl_read_size(&size);
+
+    // ESP_LOGI(TAG, "Whitelist size: %d", size);
+
 }

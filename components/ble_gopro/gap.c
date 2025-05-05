@@ -5,34 +5,6 @@
 
 static const char *TAG = "BLE_GOPRO_GAP";
 
-/*
- * If not already defined elsewhere, define a helper to convert a BLE address to a string.
- */
-#ifndef ble_addr_to_str
-static inline char *ble_addr_to_str(const ble_addr_t *addr, char *str)
-{
-    sprintf(str, "%02X:%02X:%02X:%02X:%02X:%02X",
-            addr->val[0],
-            addr->val[1],
-            addr->val[2],
-            addr->val[3],
-            addr->val[4],
-            addr->val[5]);
-    return str;
-}
-#endif
-
-void print_conn_desc(const struct ble_gap_conn_desc *desc)
-{
-    MODLOG_DFLT(INFO, "conn_itvl=%d conn_latency=%d supervision_timeout=%d "
-                      "encrypted=%d authenticated=%d bonded=%d conn id =%u" ,
-                desc->conn_itvl, desc->conn_latency,
-                desc->supervision_timeout,
-                desc->sec_state.encrypted,
-                desc->sec_state.authenticated,
-                desc->sec_state.bonded,
-                desc->conn_handle);
-}
 
 /**
  * Connects to the advertiser if it appears to be a GoPro.
@@ -59,7 +31,12 @@ void ble_connect(void *disc)
         return;
     }
 
+    ESP_LOGI(TAG,"Our address type = %d",rc);
+
     addr = &((struct ble_gap_disc_desc *)disc)->addr;
+
+    char addr_str_buf[18];
+    ESP_LOGI(TAG,"Connecting to address: %s",ble_addr_to_str(addr, addr_str_buf));
 
     ESP_LOGI(TAG, "ble_gap_connect");
     rc = ble_gap_connect(own_addr_type, addr, 30000, NULL,
@@ -71,7 +48,6 @@ void ble_connect(void *disc)
     }
     else if (rc != 0)
     {
-        char addr_str_buf[18];
         MODLOG_DFLT(ERROR, "Error: Failed to connect to device; addr_type=%d addr=%s; rc=%d\n",
                     addr->type, ble_addr_to_str(addr, addr_str_buf), rc);
         return;
@@ -148,6 +124,9 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
 
         if (rc == 0)
         {
+            char addr_str_buf[18];
+            ble_addr_t addr = get_peer_addr(event->connect.conn_handle);
+            ESP_LOGI(TAG,"Link established to addr: %s",ble_addr_to_str(&addr, addr_str_buf));
             MODLOG_DFLT(INFO, "Initiating Security");
             rc = ble_gap_security_initiate(event->connect.conn_handle);
             if (rc != 0)
@@ -180,20 +159,41 @@ int blecent_gap_event(struct ble_gap_event *event, void *arg)
     {
         ESP_LOGI(TAG, "BLE_GAP_EVENT_CONNECT");
 
-        if (event->connect.status == 0) {
+        if (event->connect.status == 0)
+        {
             ESP_LOGI(TAG, "Connected! New handle=%u",
                      event->connect.conn_handle);
-        } else {
+            char addr_str_buf[18];
+            ble_addr_t addr = get_peer_addr(event->connect.conn_handle);
+            ESP_LOGI(TAG,"Connection address: %s",ble_addr_to_str(&addr, addr_str_buf));
+        }
+        else
+        {
             ESP_LOGI(TAG, "Connection failed; status=%d",
                      event->connect.status);
         }
 
+    //     MODLOG_DFLT(INFO, "Initiating Security");
+    //         rc = ble_gap_security_initiate(event->connect.conn_handle);
+    //         if (rc != 0)
+    //         {
+    //             MODLOG_DFLT(INFO, "Security could not be initiated, rc = %d\n", rc);
+    //             return ble_gap_terminate(event->connect.conn_handle,
+    //                                      BLE_ERR_REM_USER_CONN_TERM);
+    //         }
+    //         else
+    //         {
+    //             MODLOG_DFLT(INFO, "Connection security initiated\n");
+    //         }
         return 0;
     }
 
     case BLE_GAP_EVENT_PARING_COMPLETE:
     {
         ESP_LOGI(TAG, "BLE_GAP_EVENT_PARING_COMPLETE");
+        ble_addr_t peer_addr = get_peer_addr(event->pairing_complete.conn_handle);
+
+        save_camera_info_array_to_nvs(&peer_addr);
         return 0;
     }
 
